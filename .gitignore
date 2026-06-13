@@ -1,11 +1,37 @@
+# Storage & data
 _storage_data/
+
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Build output
 .next/
-__pycache__/
-*.egg-info/
-.env
-*.pyc
-venv/
-.venv/
 dist/
 build/
+*.egg-info/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.bak
+*.bak.*
+*.log
