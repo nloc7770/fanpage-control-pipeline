@@ -1,0 +1,64 @@
+# syntax=docker/dockerfile:1.6
+# Multi-stage build for Next.js 14 standalone output.
+# Build context must be the monorepo root so that pnpm-workspace + shared-types resolve.
+
+# ---- 1. Dependencies stage ------------------------------------------------
+FROM node:20-alpine AS deps
+RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+WORKDIR /repo
+
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+COPY packages/shared-types/package.json packages/shared-types/
+COPY apps/frontend/package.json apps/frontend/
+
+RUN pnpm install --frozen-lockfile || pnpm install
+
+# ---- 2. Build stage -------------------------------------------------------
+FROM node:20-alpine AS builder
+RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+WORKDIR /repo
+
+COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/apps/frontend/node_modules ./apps/frontend/node_modules
+COPY --from=deps /repo/packages/shared-types/node_modules ./packages/shared-types/node_modules
+COPY pnpm-workspace.yaml package.json ./
+COPY packages/shared-types packages/shared-types
+COPY apps/frontend apps/frontend
+
+ARG NEXT_PUBLIC_API_URL=http://localhost:8080
+ARG NEXT_PUBLIC_SSE_URL=http://localhost:8080
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_SSE_URL=${NEXT_PUBLIC_SSE_URL}
+ENV NEXT_TELEMETRY_DISABLED=1
+WORKDIR /repo/apps/frontend
+RUN pnpm build
+
+# ---- 3. Runtime stage -----------------------------------------------------
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+RUN addgroup --system --gid 1001 nodejs \
+ && adduser --system --uid 1001 nextjs
+
+# With outputFileTracingRoot pointing at the monorepo root, the standalone
+# entry lives at /app/server.js and __dirname-resolved .next sits at /app/.next.
+COPY --from=builder --chown=nextjs:nodejs /repo/apps/frontend/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /repo/apps/frontend/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /repo/apps/frontend/public ./public
+
+# pnpm-workspace fallback: the standalone tracer emits node_modules entries as
+# symlinks that point at ../../../node_modules/.pnpm/... — resolving from
+# /app/node_modules that lands at /node_modules/.pnpm. Materialize the pnpm
+# virtual store there so those symlinks resolve at runtime.
+COPY --from=builder --chown=nextjs:nodejs /repo/node_modules /node_modules
+
+USER nextjs
+EXPOSE 3000
+
+CMD ["node", "server.js"]

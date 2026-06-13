@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ffmpeg"
+version = "0.1.0"
+description = "ffmpeg + OpenCV operations for the render stage."
+requires-python = ">=3.11"
+dependencies = [
+    "loguru>=0.7",
+    "pydantic>=2.6",
+    "shared-py",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ffmpeg*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

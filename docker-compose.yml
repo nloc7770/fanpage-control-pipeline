@@ -1,0 +1,147 @@
+name: shortform-factory
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-factory}
+      POSTGRES_USER: ${POSTGRES_USER:-factory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-factory}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-factory} -d ${POSTGRES_DB:-factory}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [factory_net]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - redisdata:/data
+      - ./infra/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [factory_net]
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "/app/apps/api:/app:/app/packages/shared-py:/app/packages/database:/app/packages/queue:/app/packages/storage:/app/packages/ai:/app/packages/ffmpeg:/app/services"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      - /home/adm1n/project/shortform-factory/_storage_data:/data/storage
+      - ./apps/api:/app/apps/api
+      - ./packages:/app/packages
+      - ./services:/app/services
+    networks: [factory_net]
+
+  worker-cpu:
+    build:
+      context: .
+      dockerfile: apps/workers/Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      PYTHONUNBUFFERED: "1"
+      WORKER_QUEUES: "download,qwen,render-prep"
+    command: ["celery", "-A", "apps.workers.celery_app", "worker", "-Q", "download,qwen,render-prep", "-l", "INFO", "--concurrency=4"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /home/adm1n/project/shortform-factory/_storage_data:/data/storage
+      - ./apps/workers:/app/apps/workers
+      - ./packages:/app/packages
+      - ./services:/app/services
+    networks: [factory_net]
+
+
+  worker-beat:
+    build:
+      context: .
+      dockerfile: apps/workers/Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      PYTHONUNBUFFERED: "1"
+    command: ["celery", "-A", "apps.workers.celery_app", "beat", "-l", "INFO"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/workers:/app/apps/workers
+      - ./packages:/app/packages
+      - ./services:/app/services
+    networks: [factory_net]
+
+  worker-facebook:
+    build:
+      context: .
+      dockerfile: apps/workers/Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      PYTHONUNBUFFERED: "1"
+      WORKER_QUEUES: "facebook,image_posts,discovery"
+    command: ["celery", "-A", "apps.workers.celery_app", "worker", "-Q", "facebook,image_posts,discovery", "-l", "INFO", "--concurrency=2"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /home/adm1n/project/shortform-factory/_storage_data:/data/storage
+      - ./apps/workers:/app/apps/workers
+      - ./packages:/app/packages
+      - ./services:/app/services
+    networks: [factory_net]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://192.168.50.83:8080}
+        NEXT_PUBLIC_SSE_URL: ${NEXT_PUBLIC_SSE_URL:-http://192.168.50.83:8080}
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      NODE_ENV: development
+    depends_on:
+      - api
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    networks: [factory_net]
+
+networks:
+  factory_net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  media_storage:

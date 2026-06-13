@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shared-py"
+version = "0.1.0"
+description = "Shared pydantic schemas, enums, SSE event shapes and LLM JSON contracts."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6",
+    "cryptography>=42.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shared_py*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ANN", "RUF"]
+ignore = ["ANN101", "ANN102"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = true

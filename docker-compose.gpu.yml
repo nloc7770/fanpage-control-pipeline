@@ -1,0 +1,37 @@
+# GPU override. Combine with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# This adds the GPU worker container and (optionally) re-pins the CPU worker
+# to leave the GPU queues alone.
+
+services:
+  worker-gpu:
+    build:
+      context: .
+      dockerfile: apps/workers/Dockerfile.gpu
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      PYTHONUNBUFFERED: "1"
+      WORKER_QUEUES: "whisperx,diarization,yolo,render"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    command: ["celery", "-A", "apps.workers.celery_app", "worker", "-Q", "whisperx,diarization,yolo,render", "-l", "INFO", "--concurrency=1"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /home/adm1n/project/shortform-factory/_storage_data:/data/storage
+      - ./apps/workers:/app/apps/workers
+      - ./packages:/app/packages
+      - ./services:/app/services
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks: [factory_net]

@@ -1,0 +1,16 @@
+{
+  "name": "shortform-factory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Short-Form Video Factory monorepo root.",
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "pnpm --filter @factory/frontend dev",
+    "build": "pnpm --filter @factory/frontend build",
+    "lint": "pnpm -r --if-present lint",
+    "typecheck": "pnpm -r --if-present typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

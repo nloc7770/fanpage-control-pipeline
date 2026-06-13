@@ -1,0 +1,57 @@
+"""Internal module: holds the Celery instance to avoid circular imports.
+
+Task modules import ``celery`` from this module (not from ``worker_app``); the
+public ``worker_app.py`` is the entry point that wires task registration after
+the instance exists.
+"""
+
+from __future__ import annotations
+
+from celery.schedules import crontab
+
+from task_queue import make_celery, register_signal_logging
+
+
+# Daily content-generation cycle (Asia/Ho_Chi_Minh time, server TZ should be set
+# to UTC in env so we offset accordingly: ICT = UTC+7).
+# Targets per spec:
+#   - 5-10 reels/day/page (= 2-3 source videos -> 5-10 clips each)
+#   - 2-3 image posts/day/page
+#   - Posting slots: 11/17/19/21/23 ICT
+# All gen tasks RUN once a day; publishing is per-minute and only fires for
+# manually-approved drafts whose scheduled_at <= now.
+_BEAT = {
+    "discovery-daily": {
+        "task": "discovery.find_content_for_pages",
+        # 06:00 ICT = 23:00 UTC the previous day.
+        "schedule": crontab(hour=23, minute=0),
+        "options": {"queue": "discovery"},
+    },
+    "queue-sources-daily": {
+        "task": "discovery.queue_sources_for_generation",
+        # 06:30 ICT = 23:30 UTC.
+        "schedule": crontab(hour=23, minute=30),
+        "options": {"queue": "discovery"},
+    },
+    "auto-schedule-next-reel-every-2h": {
+        "task": "facebook.auto_schedule_next_approved",
+        # Fire 12x/day aligned to 9h VN start: 02,04,06,08,10,12,14,16,18,20,22,00 UTC
+        # = 09,11,13,15,17,19,21,23,01,03,05,07 VN (UTC+7).
+        "schedule": crontab(minute=0, hour="2,4,6,8,10,12,14,16,18,20,22,0"),
+        "options": {"queue": "facebook"},
+    },
+    "publish-scheduled-reels": {
+        "task": "facebook.publish_scheduled_reels",
+        "schedule": crontab(minute="*/1"),
+        "options": {"queue": "facebook"},
+    },
+}
+
+
+celery = make_celery(
+    name="shortform_factory_workers",
+    extra_config={"beat_schedule": _BEAT, "timezone": "UTC"},
+)
+register_signal_logging(celery)
+
+app = celery  # alias

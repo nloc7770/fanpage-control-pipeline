@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# Python module name is `task_queue` (not `queue`) to avoid shadowing the
+# stdlib `queue` module used internally by Celery, kombu, etc.
+name = "task-queue"
+version = "0.1.0"
+description = "Celery configuration shared by the API and workers (broker, routes, signals)."
+requires-python = ">=3.11"
+dependencies = [
+    "celery>=5.3",
+    "redis>=5.0",
+    "loguru>=0.7",
+    "pydantic>=2.6",
+    "shared-py",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["task_queue*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true

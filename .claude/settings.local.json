@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /tmp/sff-ytdebug)",
+      "Read(//tmp/**)",
+      "Bash(rm -f *)",
+      "Bash(yt-dlp -f 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best' --no-playlist --write-thumbnail --postprocessor-args \"ffmpeg:-loglevel error\" -o '%\\(id\\)s.%\\(ext\\)s' 'https://www.youtube.com/watch?v=qPWjjWGrpHE')"
+    ]
+  }
+}

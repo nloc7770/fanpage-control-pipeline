@@ -1,0 +1,60 @@
+# GPU worker image -- runs whisperx / diarization / yolo / render queues.
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-dev python3.11-venv python3-pip \
+        ffmpeg \
+        libsndfile1 \
+        git \
+        build-essential \
+        libpq-dev \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+RUN ln -sf /usr/bin/python3.11 /usr/local/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/local/bin/python3
+
+WORKDIR /app
+
+# Internal packages.
+COPY packages/shared-py /app/packages/shared-py
+COPY packages/database /app/packages/database
+COPY packages/queue /app/packages/queue
+COPY packages/storage /app/packages/storage
+COPY packages/ai /app/packages/ai
+COPY packages/ffmpeg /app/packages/ffmpeg
+RUN python -m pip install --upgrade pip && pip install \
+    /app/packages/shared-py \
+    /app/packages/database \
+    /app/packages/queue \
+    /app/packages/storage \
+    /app/packages/ai \
+    /app/packages/ffmpeg
+
+# CUDA wheels for torch (pinned to CUDA 12.1 in line with the base image).
+RUN pip install --extra-index-url https://download.pytorch.org/whl/cu121 \
+    torch==2.3.1 torchaudio==2.3.1
+
+# AI/vision libs.
+RUN pip install \
+    "celery>=5.3" "redis>=5.0" "httpx>=0.27" "loguru>=0.7" \
+    "yt-dlp>=2024.3" "anyio>=4.3" \
+    "whisperx" \
+    "pyannote.audio" \
+    "ultralytics" \
+    "opencv-python-headless"
+
+COPY apps/workers /app/apps/workers
+COPY services /app/services
+
+ENV PYTHONPATH=/app:/app/packages/shared-py:/app/packages/database:/app/packages/queue:/app/packages/storage:/app/packages/ai:/app/packages/ffmpeg:/app/services
+
+CMD ["celery", "-A", "apps.workers.worker_app", "worker", \
+     "-Q", "whisperx,diarization,yolo,render", "-l", "INFO", "--concurrency=1"]
